@@ -1,0 +1,49 @@
+
+USE CATALOG {{ q.uc_catalog }};
+
+DROP TABLE IF EXISTS {{ q.target_table }};
+
+CREATE TABLE IF NOT EXISTS {{ q.target_table }} (
+    {{ q.columns_create|join(', ') }}
+    );
+
+INSERT INTO {{ q.target_table }} (
+    {{ q.columns_insert|join(', ') }}
+)
+SELECT
+DISTINCT
+    {{ q.columns_select|join(', \n    ') }}
+FROM (
+    SELECT viz.* FROM {{ q.uc_catalog }}.detection.viewing_commercials_cfe_golden AS viz
+    WHERE 'VIZIO' IN ('VIZIO')              -- If only Vizio
+    -- WHERE 'VIZIO' IN ('ONN')             -- If only ONN
+    -- WHERE 'VIZIO' IN ('VIZIO', 'ONN')    -- If both Vizio and ONN
+      AND viz.session_start >=  {{ q.ts_start }}
+      AND viz.session_start < {{ q.ts_end }}
+      AND CASE WHEN (viz.acrb_clients IS NOT NULL
+                  AND viz.acrb_clients != '||'
+                  AND viz.acrb_clients NOT LIKE '%|{{ q.customer.name }}|%') OR viz.acrb_clients <=> '|ALL|' THEN FALSE ELSE TRUE END
+    UNION
+    SELECT onn.* FROM {{ q.uc_catalog }}.detection_onn.viewing_commercials_cfe_golden AS onn
+    WHERE 'ONN' IN ('VIZIO')              -- If only Vizio
+    -- WHERE 'ONN' IN ('ONN')             -- If only ONN
+    -- WHERE 'ONN' IN ('VIZIO', 'ONN')    -- If both Vizio and ONN
+      AND onn.session_start >=  {{ q.ts_start }}
+      AND onn.session_start < {{ q.ts_end }}
+      AND CASE WHEN (onn.acrb_clients IS NOT NULL
+                  AND onn.acrb_clients != '||'
+                  AND onn.acrb_clients NOT LIKE '%|{{ q.customer.name }}|%') OR onn.acrb_clients <=> '|ALL|' THEN FALSE ELSE TRUE END
+) AS mt
+    JOIN {{ q.uc_catalog }}.detection.tv_populations AS tp
+        ON mt.fk_tvid = tp.fk_tvid
+    JOIN {{ q.uc_catalog }}.detection.populations AS pop
+        ON tp.fk_population_id = pop.population_id
+        AND LOWER(pop.population_name) = 'opted_in'
+    WHERE 1=1
+{% if q.TYPE == rt.COMMERCIALFEEDMODULAR %} 
+        AND fk_commercial_source_id IN {{ q.feed_source_id }}
+{% endif %}
+        {{ q.custom_clause }}
+{% if q.sample_size != False %}
+        AND MOD(mt.fk_tvid, 100) < {{q.sample_size}};
+{% endif %}
