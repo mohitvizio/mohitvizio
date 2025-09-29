@@ -54,7 +54,7 @@ SELECT date_format(
   , m21_plus + w21_plus  AS a21_plus
 FROM {{ q.uc_catalog }}.detection.panel_weights panel
 INNER JOIN {{ q.uc_catalog }}.detection.tv
-    ON nrp.fk_tvid = tv.tvid 
+    ON panel.fk_tvid = tv.tvid 
 {% if 'ONN' in q.oem %}
     AND TRUE
 {% else %}
