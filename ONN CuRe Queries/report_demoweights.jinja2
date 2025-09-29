@@ -1,0 +1,71 @@
+USE CATALOG {{ q.uc_catalog }};
+
+DROP TABLE IF EXISTS {{ q.target_table }};
+
+CREATE TABLE IF NOT EXISTS {{ q.target_table }} (
+    week_date timestamp,
+    m18_34 integer,
+    m25_54 integer,
+    m18_49 integer,
+    m18_plus integer,
+    m21_plus integer,
+    w18_34 integer,
+    w25_54 integer,
+    w18_49 integer,
+    w18_plus integer,
+    w21_plus integer,
+    a18_plus integer,
+    a21_plus integer
+);
+
+INSERT INTO {{ q.target_table }} (
+    week_date,
+    m18_34,
+    m25_54,
+    m18_49,
+    m18_plus,
+    m21_plus,
+    w18_34,
+    w25_54,
+    w18_49,
+    w18_plus,
+    w21_plus,
+    a18_plus,
+    a21_plus
+)
+
+
+SELECT date_format(
+  DATE_TRUNC('week', panel.start_date) + interval '7 hours',
+                   'yyyy-MM-dd hh:mm:ss')AS week_date,
+  ROUND(SUM((demo_male_18_24 + demo_male_25_34) * full_projected_weight)) as m18_34
+  , ROUND(SUM((demo_male_25_34 + demo_male_35_44 + demo_male_45_54) * full_projected_weight)) as m25_54
+  , ROUND(SUM((demo_male_18_29 + demo_male_30_39 + demo_male_40_49) * full_projected_weight)) as m18_49
+  , ROUND(SUM((demo_male_18_29 + demo_male_30_39 + demo_male_40_49 + demo_male_50_59
+         + demo_male_60_69 + demo_male_70_999) * full_projected_weight)) as m18_plus
+  , ROUND(SUM(demo_male_21_plus * full_projected_weight)) as m21_plus
+  , ROUND(SUM((demo_female_18_24 + demo_female_25_34) * full_projected_weight)) as w18_34
+  , ROUND(SUM((demo_female_25_34 + demo_female_35_44 + demo_female_45_54) * full_projected_weight)) as w25_54
+  , ROUND(SUM((demo_female_18_29 + demo_female_30_39 + demo_female_40_49) * full_projected_weight)) as w18_49
+  , ROUND(SUM((demo_female_18_29 + demo_female_30_39 + demo_female_40_49 + demo_female_50_59
+         + demo_female_60_69 + demo_female_70_999) * full_projected_weight)) as w18_plus
+  , ROUND(SUM(demo_female_21_plus * full_projected_weight)) as w21_plus
+  , m18_plus + w18_plus as a18_plus
+  , m21_plus + w21_plus  AS a21_plus
+FROM {{ q.uc_catalog }}.detection.panel_weights panel
+INNER JOIN {{ q.uc_catalog }}.detection.tv
+    ON nrp.fk_tvid = tv.tvid 
+{% if 'ONN' in q.oem %}
+    AND TRUE
+{% else %}
+    AND COALESCE(tv.oem, 'x') != 'ONN'
+LEFT JOIN {{ q.uc_catalog }}.detection.experian_demography_historical demo
+    ON panel.fk_tvid = demo.tvid
+    AND DATE_TRUNC('MONTH', match_date) = DATE_TRUNC('MONTH', DATEADD(MONTH, -1, panel.start_date))
+WHERE  
+    panel.start_date > DATEADD(WEEK, -105, CURRENT_DATE) 
+    AND panel.start_date > {{ q.ts_start }} 
+
+
+GROUP BY 1
+ORDER BY 1 DESC
