@@ -61,6 +61,8 @@ INNER JOIN {{ q.uc_catalog }}.detection.tv
    AND COALESCE(tv.oem, 'x') = 'ONN'
 {% else %}
     AND COALESCE(tv.oem, 'x') != 'ONN'
+{% endif %}
+
 LEFT JOIN {{ q.uc_catalog }}.detection.experian_demography_historical demo
     ON panel.fk_tvid = demo.tvid
     AND DATE_TRUNC('MONTH', match_date) = DATE_TRUNC('MONTH', DATEADD(MONTH, -1, panel.start_date))
@@ -71,3 +73,4 @@ WHERE
 
 GROUP BY 1
 ORDER BY 1 DESC
+LIMIT 104;
