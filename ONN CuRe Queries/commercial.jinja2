@@ -1,5 +1,7 @@
 USE CATALOG {{ q.uc_catalog }};
 
+{% if q.use_view == false %}
+
 DROP TABLE IF EXISTS {{ q.target_table }};
 
 CREATE TABLE IF NOT EXISTS {{ q.target_table }} (
@@ -7,31 +9,58 @@ CREATE TABLE IF NOT EXISTS {{ q.target_table }} (
     );
 
 INSERT INTO {{ q.target_table }} (
-    {{ q.columns_insert|join(', ') }}
+    {{ q.columns_insert|join(', \n    ') }}
 )
-SELECT 
+{% elif q.use_view == true and q.alter_view == false  %}
+
+CREATE SCHEMA IF NOT EXISTS cure_deltashare.{client_name};
+
+DROP VIEW IF EXISTS {{ q.target_table }};
+
+CREATE VIEW {{ q.target_table }} AS
+
+{% elif q.use_view == true and q.alter_view == true %}
+
+ALTER VIEW {{ q.target_table }} AS
+
+{% endif %}
+
+SELECT /*+ BROADCAST(wfd_check) 
+      SHUFFLE_HASH(hashed_table)   
+         */
 DISTINCT 
     {{ q.columns_select|join(', \n    ') }}
-FROM (
-    SELECT viz.* FROM {{ q.uc_catalog }}.detection.viewing_commercials_golden AS viz
-    WHERE 'VIZIO' IN ('VIZIO')              -- If only Vizio
-    -- WHERE 'VIZIO' IN ('ONN')             -- If only ONN
-    -- WHERE 'VIZIO' IN ('VIZIO', 'ONN')    -- If both Vizio and ONN
-      AND viz.session_start >= {{ q.ts_start }}
-      AND viz.session_start < {{ q.ts_end }}
-      AND viz.session_start_hour >= {{ q.ts_start }}
-      AND viz.session_start_hour < {{ q.ts_end }}
-      AND CASE WHEN 'nielsen' = '{client_name}' THEN viz.commercial_client IN ('kinetiq', 'nielsen') ELSE viz.commercial_client = {comm_client} END
+FROM 
+(
+{% if 'VIZIO' in q.oem %}
+    SELECT viz.* FROM {{ q.uc_catalog }}.{{ q.content_table }} AS viz
+    WHERE 
+{% if q.use_view == true %}
+        viz.session_start_hour >= (current_date - INTERVAL '6' MONTH)
+{% elif q.use_view == false %} 
+        viz.session_start >= {{ q.ts_start }}
+        AND viz.session_start < {{ q.ts_end }}
+        AND viz.session_start_hour >= {{ q.ts_start }}
+        AND viz.session_start_hour < {{ q.ts_end }}
+{% endif %}     
+        AND CASE WHEN 'nielsen' = '{client_name}' THEN viz.commercial_client IN ('kinetiq', 'nielsen') ELSE viz.commercial_client = {comm_client} END
+{% endif %}
+{% if 'ONN' in q.oem and 'VIZIO' in q.oem %}
     UNION
+{% endif %}
+{% if 'ONN' in q.oem %}
     SELECT onn.* FROM {{ q.uc_catalog }}.detection_onn.viewing_commercials_golden AS onn
-    WHERE 'ONN' IN ('VIZIO')              -- If only Vizio
-    -- WHERE 'ONN' IN ('ONN')             -- If only ONN
-    -- WHERE 'ONN' IN ('VIZIO', 'ONN')    -- If both Vizio and ONN
-      AND onn.session_start >= {{ q.ts_start }}
-      AND onn.session_start < {{ q.ts_end }}
-      AND onn.session_start_hour >= {{ q.ts_start }}
-      AND onn.session_start_hour < {{ q.ts_end }}
-      AND CASE WHEN 'nielsen' = '{client_name}' THEN onn.commercial_client IN ('kinetiq', 'nielsen') ELSE onn.commercial_client = {comm_client} END
+    WHERE 
+{% if q.use_view == true %}
+        onn.session_start_hour >= (current_date - INTERVAL '6' MONTH)
+{% elif q.use_view == false %} 
+        onn.session_start >= {{ q.ts_start }}
+        AND onn.session_start < {{ q.ts_end }}
+        AND onn.session_start_hour >= {{ q.ts_start }}
+        AND onn.session_start_hour < {{ q.ts_end }}
+{% endif %}     
+        AND CASE WHEN 'nielsen' = '{client_name}' THEN onn.commercial_client IN ('kinetiq', 'nielsen') ELSE onn.commercial_client = {comm_client} END
+{% endif %}
 ) AS mt
 JOIN {{ q.uc_catalog }}.detection.tv_populations AS tp
     ON mt.fk_tvid = tp.fk_tvid
@@ -39,7 +68,19 @@ JOIN {{ q.uc_catalog }}.detection.populations AS pop
     ON tp.fk_population_id = pop.population_id
     AND LOWER(pop.population_name) = 'opted_in'
 
-WHERE 1=1
+{% if q.use_view == true %}
+JOIN 
+    ( SELECT DISTINCT * FROM {{ q.hashes_table }} ) AS hashed_table
+    ON mt.tvid = hashed_table.tvid
+JOIN {{ q.uc_catalog }}.customer_reports.wfd_watermark as wfd_check
+    ON wfd_check.report_type = 'commercial'
+    AND wfd_check.frequency = 'hourly'
+    AND mt.session_start_hour = date_format(wfd_check.start_ts, 'yyyy-MM-dd HH:mm:ss')
+    AND wfd_check.start_ts between (current_date - INTERVAL '6' MONTH) and current_timestamp
+{% endif %}        
+WHERE 
+    1=1
+
 {# {% if q.all_commercial_feed == 'adimpact' %}
     -- AND (mt.commercial_client != 'adimpact') --OR (mt.commercial_client= 'adimpact' and m.commercial_category = 'Political' ))
     -- THE COMMERCIAL CATEGORY POLITICAL CHECK WAS IN THE ORIGINAL COMM QUERY, ITS NOT BEING POPULATED IN THE GOLDEN TABLE SO COMMENTING IT OUT FOR NOW
