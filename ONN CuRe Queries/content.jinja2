@@ -44,7 +44,10 @@ SELECT viz.* FROM {{ q.uc_catalog }}.{{ q.content_table }} AS viz
         AND viz.session_start_hour >= DATE_TRUNC('HOUR', {{ q.ts_start }})
         AND viz.session_start_hour <= DATE_TRUNC('HOUR', {{ q.ts_end }})
 {% endif %}
-UNION
+
+{% if 'ONN' in q.oem and 'VIZIO' in q.oem %}
+    UNION
+{% endif %}
 
 {% endif %}
 {% if 'ONN' in q.oem %}
