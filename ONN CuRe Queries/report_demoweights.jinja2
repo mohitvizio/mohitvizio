@@ -55,8 +55,10 @@ SELECT date_format(
 FROM {{ q.uc_catalog }}.detection.panel_weights panel
 INNER JOIN {{ q.uc_catalog }}.detection.tv
     ON panel.fk_tvid = tv.tvid 
-{% if 'ONN' in q.oem %}
+{% if 'ONN' in q.oem and 'VIZIO' in q.oem %}
     AND TRUE
+{% elif 'ONN' in q.oem and 'VIZIO' not in q.oem %}
+   AND COALESCE(tv.oem, 'x') = 'ONN'
 {% else %}
     AND COALESCE(tv.oem, 'x') != 'ONN'
 LEFT JOIN {{ q.uc_catalog }}.detection.experian_demography_historical demo
