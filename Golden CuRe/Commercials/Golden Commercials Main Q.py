@@ -48,7 +48,7 @@ WITH commercial_id_external_firehose AS (
   SELECT blocked_apps.app_name, override.client_name
   FROM prod.detection.app_viewing_distribution_blacklist AS blocked_apps
   LEFT JOIN prod.detection.app_customer_viewing_distribution_override override
-    ON blocked_apps.app_name = override.app_name
+  ON blocked_apps.app_name = override.app_name
   GROUP BY 1, 2
 )
 , epg_program_aggregate AS (
