@@ -1,4 +1,8 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "4"
+# ///
 # MAGIC %sql
 # MAGIC
 # MAGIC INSERT INTO dev.mohit_gangwani.detection_rate_since_jan12020
@@ -11,8 +15,20 @@
 # MAGIC , COUNT(DISTINCT vc.fk_tvid) AS total_tvs
 # MAGIC , SUM(vc.session_duration)/3600.0 AS total_duration
 # MAGIC FROM prod.detection.viewing_content_firehose vc
-# MAGIC JOIN prod.detection.tv
-# MAGIC   ON vc.fk_tvid = tv.tvid
+# MAGIC JOIN (
+# MAGIC   SELECT tvid, token
+# MAGIC   FROM (
+# MAGIC     SELECT tvid, token, oem
+# MAGIC     , ROW_NUMBER() OVER (PARTITION BY token ORDER BY joined_date DESC) AS rn
+# MAGIC     FROM prod.detection.tv
+# MAGIC     WHERE tv.model_name IS NOT NULL
+# MAGIC       AND tv.model_name NOT IN ('test', '', 'Convert_Board', 'E60_DV_Panel-less', 'E60_FY17_DV_Panel-less', 'M70_FY17_POH_Panel-less', 'Test_28')
+# MAGIC       AND tv.model_name NOT ILIKE 'test%'
+# MAGIC   ) AS tv
+# MAGIC   WHERE UPPER(tv.oem) = 'VIZIO'
+# MAGIC     AND tv.rn = 1
+# MAGIC ) AS tv
+# MAGIC   ON tv.tvid = vc.fk_tvid
 # MAGIC JOIN prod.detection.tv_input_stats_firehose  tvis
 # MAGIC   ON vc.fk_tvid = tvis.fk_tvid
 # MAGIC  AND vc.fk_input_source_id = tvis.fk_input_source_id
@@ -31,7 +47,4 @@
 # MAGIC   AND vc.fk_zoo_id = 17
 # MAGIC   AND tvis.total_duration > 0
 # MAGIC   AND vc.session_duration > 0
-# MAGIC   AND tv.model_name IS NOT NULL
-# MAGIC   AND tv.model_name NOT IN ('test', '', 'Convert_Board', 'E60_DV_Panel-less', 'E60_FY17_DV_Panel-less', 'M70_FY17_POH_Panel-less', 'Test_28')
-# MAGIC   AND tv.model_name NOT ILIKE 'test%'
 # MAGIC GROUP BY 1, 2, 3
