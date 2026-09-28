@@ -151,3 +151,32 @@ GROUP BY 1,2,3
 -- COMMAND ----------
 
 SELECT * FROM prod.detection.station_distribution_obfuscation_overwrite
+
+-- COMMAND ----------
+
+SELECT c.partition_key, COUNT(DISTINCT c.fk_tvid)
+FROM prod.detection_onn.viewing_commercials_firehose c
+JOIN prod.detection.tv_populations tvp
+  ON tvp.fk_tvid = c.fk_tvid
+JOIN prod.detection.populations pop
+  ON pop.population_id = tvp.fk_population_id
+WHERE pop.population_name = 'opted_in'
+AND c.partition_key >= '2025-12-01'
+AND c.partition_key <= '2025-12-31'
+GROUP BY 1
+
+-- COMMAND ----------
+
+SELECT DATE(session_start_hour), COUNT(DISTINCT c.fk_tvid)
+FROM prod.detection_onn.viewing_commercials_dedup_golden c
+WHERE c.session_start_hour >= '2025-12-01'
+AND c.session_start_hour <= '2025-12-31'
+GROUP BY 1
+
+-- COMMAND ----------
+
+SELECT DATE(session_start_hour), COUNT(DISTINCT c.fk_tvid)
+FROM prod.detection_onn.viewing_commercials_golden c
+WHERE c.session_start_hour >= '2025-12-01'
+AND c.session_start_hour <= '2025-12-31'
+GROUP BY 1
